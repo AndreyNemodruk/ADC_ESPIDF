@@ -6,46 +6,42 @@
 #include "freertos/task.h"
 #include "soc/adc_channel.h"
 
-constexpr gpio_num_t gpio = GPIO_NUM_4;
-constexpr gpio_num_t LED_GPIO = GPIO_NUM_16;
+constexpr gpio_num_t ADC_GPIO = GPIO_NUM_4;
 constexpr adc_channel_t ADC_CHANNEL = ADC_CHANNEL_3;
 
 static adc_oneshot_unit_handle_t adc_handle;
 static adc_cali_handle_t adc_cali_handle;
 
-constexpr int LIGHT_THRESHOLD_MV = 1500;
-constexpr int HYSTERESIS_MV = 300;
-
-constexpr int DARK_THRESHOLD_MV = LIGHT_THRESHOLD_MV - HYSTERESIS_MV;
-constexpr int BRIGHT_THRESHOLD_MV = LIGHT_THRESHOLD_MV + HYSTERESIS_MV;
+// Вноси сюда напряжение, измеренное мультиметром
+int U_manual = 1000;
 
 #define SMA_SIZE 5
-int readings[SMA_SIZE];
-long sum = 0;
-bool sma_initialized = false;
-static int index = 0;
 
-int calculateSMA(int newValue) {
+// int readings[SMA_SIZE];
+// long sum = 0;
+// bool sma_initialized = false;
+// static int index = 0;
 
-  if (!sma_initialized) {
-    for (int i = 0; i < SMA_SIZE; i++) {
-      readings[i] = newValue;
-    }
+// int calculateSMA(int newValue) {
+//   if (!sma_initialized) {
+//     for (int i = 0; i < SMA_SIZE; i++) {
+//       readings[i] = newValue;
+//     }
 
-    sum = newValue * SMA_SIZE;
-    sma_initialized = true;
+//     sum = newValue * SMA_SIZE;
+//     sma_initialized = true;
 
-    return newValue;
-  }
+//     return newValue;
+//   }
 
-  sum -= readings[index];
-  readings[index] = newValue;
-  sum += newValue;
+//   sum -= readings[index];
+//   readings[index] = newValue;
+//   sum += newValue;
 
-  index = (index + 1) % SMA_SIZE;
+//   index = (index + 1) % SMA_SIZE;
 
-  return sum / SMA_SIZE;
-}
+//   return sum / SMA_SIZE;
+// }
 
 void adc_init() {
   adc_oneshot_unit_init_cfg_t unit_config = {
@@ -89,42 +85,29 @@ int adc_read_mv(int raw) {
   return voltage_mv;
 }
 
-void led_init() {
-  gpio_config_t config = {};
-
-  config.pin_bit_mask = (1ULL << LED_GPIO);
-  config.mode = GPIO_MODE_OUTPUT;
-  config.pull_up_en = GPIO_PULLUP_DISABLE;
-  config.pull_down_en = GPIO_PULLDOWN_DISABLE;
-  config.intr_type = GPIO_INTR_DISABLE;
-
-  ESP_ERROR_CHECK(gpio_config(&config));
-
-  gpio_set_level(LED_GPIO, 0);
-}
-
 extern "C" void app_main() {
   adc_init();
-  led_init();
 
-  bool led_on = false;
+  printf("\n");
+  printf("===============================================================\n");
+  printf("                 ESP32-S3 ADC TEST\n");
+  printf("===============================================================\n");
+  printf("%8s | %14s | %12s | %10s\n", "RAW", "U_manual(mV)", "U_cali(mV)", "Error(%)");
+  printf("---------+----------------+--------------+-----------\n");
 
   while (true) {
     int raw = adc_read_raw();
     int mv = adc_read_mv(raw);
 
-    int filtered_mv = calculateSMA(mv);
+    // int filtered_mv = calculateSMA(mv);
 
-    if (filtered_mv < DARK_THRESHOLD_MV) {
-      gpio_set_level(LED_GPIO, 1);
-      led_on = true;
-    } else if (filtered_mv > BRIGHT_THRESHOLD_MV) {
-      gpio_set_level(LED_GPIO, 0);
-      led_on = false;
+    float error = 0.0f;
+
+    if (U_manual != 0) {
+      error = ((static_cast<float>(mv) - U_manual) / U_manual) * 100.0f;
     }
 
-    printf("ADC: raw = %d, voltage = %d mV, SMA = %d mV, LED = %s\n", raw, mv, filtered_mv,
-           led_on ? "ON" : "OFF");
+    printf("%8d | %14d | %12d | %+9.2f\n", raw, U_manual, mv, error);
 
     vTaskDelay(pdMS_TO_TICKS(400));
   }
