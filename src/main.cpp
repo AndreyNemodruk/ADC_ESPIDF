@@ -6,7 +6,6 @@
 #include "freertos/task.h"
 #include "soc/adc_channel.h"
 
-constexpr gpio_num_t gpio = GPIO_NUM_4;
 constexpr gpio_num_t LED_GPIO = GPIO_NUM_16;
 constexpr adc_channel_t ADC_CHANNEL = ADC_CHANNEL_3;
 
@@ -19,32 +18,43 @@ constexpr int HYSTERESIS_MV = 300;
 constexpr int DARK_THRESHOLD_MV = LIGHT_THRESHOLD_MV - HYSTERESIS_MV;
 constexpr int BRIGHT_THRESHOLD_MV = LIGHT_THRESHOLD_MV + HYSTERESIS_MV;
 
+struct SMA {
+  int* readings;
+  int size;
+  int index;
+  int sum;
+  bool initialized;
+};
+
 #define SMA_SIZE 5
+
 int readings[SMA_SIZE];
-long sum = 0;
-bool sma_initialized = false;
-static int index = 0;
 
-int calculateSMA(int newValue) {
+SMA adcFilter = {readings, SMA_SIZE, 0, 0, false};
 
-  if (!sma_initialized) {
-    for (int i = 0; i < SMA_SIZE; i++) {
-      readings[i] = newValue;
+int calculateSMA(SMA& filter, int newValue) {
+  if (!filter.initialized) {
+
+    for (int i = 0; i < filter.size; i++) {
+      filter.readings[i] = newValue;
     }
 
-    sum = newValue * SMA_SIZE;
-    sma_initialized = true;
+    filter.sum = newValue * filter.size;
+    filter.index = 0;
+    filter.initialized = true;
 
     return newValue;
   }
 
-  sum -= readings[index];
-  readings[index] = newValue;
-  sum += newValue;
+  filter.sum -= filter.readings[filter.index];
 
-  index = (index + 1) % SMA_SIZE;
+  filter.readings[filter.index] = newValue;
 
-  return sum / SMA_SIZE;
+  filter.sum += newValue;
+
+  filter.index = (filter.index + 1) % filter.size;
+
+  return filter.sum / filter.size;
 }
 
 void adc_init() {
@@ -113,7 +123,7 @@ extern "C" void app_main() {
     int raw = adc_read_raw();
     int mv = adc_read_mv(raw);
 
-    int filtered_mv = calculateSMA(mv);
+    int filtered_mv = calculateSMA(adcFilter, mv);
 
     if (filtered_mv < DARK_THRESHOLD_MV) {
       gpio_set_level(LED_GPIO, 1);
