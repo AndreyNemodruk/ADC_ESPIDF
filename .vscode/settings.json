@@ -1,0 +1,12 @@
+{
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/src",
+    "${workspaceFolder}/include",
+    "${workspaceFolder}/components/my_button/include"
+  ],
+  "C_Cpp.default.browse.path": [
+    "${workspaceFolder}/src",
+    "${workspaceFolder}/include",
+    "${workspaceFolder}/components/my_button/include"
+  ]
+}
