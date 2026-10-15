@@ -1,109 +1,41 @@
-#include <stdio.h>
-#include <string.h>
-
-#include "MyButton.h"
-#include "driver/gpio.h"
-#include "driver/uart.h"
+#include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "oled.h"
+#include "watch.h"
 
-#define UART_PORT UART_NUM_1
-#define UART_TX_PIN GPIO_NUM_17
-#define UART_RX_PIN GPIO_NUM_18
-#define UART_BAUD_RATE 115200
-#define RX_BUFFER_SIZE 256
-#define COMMAND_SIZE 64
+static constexpr gpio_num_t kI2cSda = GPIO_NUM_8;
+static constexpr gpio_num_t kI2cScl = GPIO_NUM_9;
 
-#define BUTTON_PIN GPIO_NUM_5
-#define LED_PIN GPIO_NUM_4
+static i2c_master_bus_handle_t i2c_bus_init() {
+  i2c_master_bus_config_t cfg = {};
+  cfg.i2c_port = I2C_NUM_0;
+  cfg.sda_io_num = kI2cSda;
+  cfg.scl_io_num = kI2cScl;
+  cfg.clk_source = I2C_CLK_SRC_DEFAULT;
+  cfg.glitch_ignore_cnt = 7;
+  cfg.flags.enable_internal_pullup = true;
 
-static char rxBuffer[COMMAND_SIZE];
-static uint8_t rxPos = 0;
-
-static MyButton button;
-static bool ledRequestedOn = false;
-
-static void uart_init() {
-  uart_config_t uartConfig = {};
-  uartConfig.baud_rate = UART_BAUD_RATE;
-  uartConfig.data_bits = UART_DATA_8_BITS;
-  uartConfig.parity = UART_PARITY_DISABLE;
-  uartConfig.stop_bits = UART_STOP_BITS_1;
-  uartConfig.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
-  uartConfig.rx_flow_ctrl_thresh = 122;
-  uartConfig.source_clk = UART_SCLK_DEFAULT;
-
-  ESP_ERROR_CHECK(uart_driver_install(UART_PORT, RX_BUFFER_SIZE, 0, 0, NULL, 0));
-  ESP_ERROR_CHECK(uart_param_config(UART_PORT, &uartConfig));
-  ESP_ERROR_CHECK(
-      uart_set_pin(UART_PORT, UART_TX_PIN, UART_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-}
-
-static void uart_send(const char* text) {
-  uart_write_bytes(UART_PORT, text, strlen(text));
-}
-
-static void led_init() {
-  gpio_config_t io = {};
-  io.pin_bit_mask = 1ULL << LED_PIN;
-  io.mode = GPIO_MODE_OUTPUT;
-  io.pull_up_en = GPIO_PULLUP_DISABLE;
-  io.pull_down_en = GPIO_PULLDOWN_DISABLE;
-  io.intr_type = GPIO_INTR_DISABLE;
-  gpio_config(&io);
-  gpio_set_level(LED_PIN, 0);
-}
-
-static void led_set(bool on) {
-  gpio_set_level(LED_PIN, on ? 1 : 0);
-}
-
-static void onButtonShortPress(MyButton* /*btn*/) {
-  ledRequestedOn = !ledRequestedOn;
-  uart_send(ledRequestedOn ? "LED_ON\r\n" : "LED_OFF\r\n");
-}
-
-static void handle_command(const char* command) {
-  if (strcmp(command, "LED_ON") == 0) {
-    led_set(true);
-  } else if (strcmp(command, "LED_OFF") == 0) {
-    led_set(false);
-  }
-}
-
-static void uart_poll() {
-  uint8_t rx;
-  int len = uart_read_bytes(UART_PORT, &rx, 1, pdMS_TO_TICKS(10));
-
-  if (len <= 0) {
-    return;
-  }
-
-  if (rx == '\r' || rx == '\n') {
-    if (rxPos > 0) {
-      rxBuffer[rxPos] = '\0';
-      handle_command(rxBuffer);
-      rxPos = 0;
-    }
-    return;
-  }
-
-  if (rxPos < sizeof(rxBuffer) - 1) {
-    rxBuffer[rxPos++] = rx;
-  }
+  i2c_master_bus_handle_t bus = nullptr;
+  ESP_ERROR_CHECK(i2c_new_master_bus(&cfg, &bus));
+  return bus;
 }
 
 extern "C" void app_main() {
-  uart_init();
-  led_init();
+  i2c_master_bus_handle_t bus = i2c_bus_init();
+  ESP_ERROR_CHECK(oled_init(bus));
+  ESP_ERROR_CHECK(watch_init(bus));
 
-  ButtonConfig buttonConfig = {};
-  buttonConfig.pinMode = ButtonPinMode::PullUp;
-  ESP_ERROR_CHECK(button.createButton(BUTTON_PIN, buttonConfig));
-  button.on(ButtonEvent::ShortPress, onButtonShortPress);
+  char time_buf[16];
+  char date_buf[20];
 
   while (true) {
-    button.poll();
-    uart_poll();
+    WatchTime now = {};
+    if (watch_get(&now) == ESP_OK) {
+      watch_format_time(&now, time_buf, sizeof(time_buf));
+      watch_format_date(&now, date_buf, sizeof(date_buf));
+      oled_show_datetime(time_buf, date_buf);
+    }
+    vTaskDelay(pdMS_TO_TICKS(200));
   }
 }

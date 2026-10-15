@@ -3,18 +3,16 @@ dependencies:
     source:
       type: idf
     version: 6.0.1
-  joltwallet/littlefs:
-    component_hash: 3af20a3d75c49db9dc2286fd50862c34055c9f578419ad1f2bf7ed3ed01391fe
-    dependencies:
-    - name: idf
-      require: private
-      version: '>=5.0'
+  nopnop2002/ssd1306:
+    component_hash: ccf568f8a780207aa7fdafda106f6e934de43a6f1c9ae783dd2825be2c525f28
+    dependencies: []
     source:
-      registry_url: https://components.espressif.com/
-      type: service
-    version: 1.22.3
+      git: https://github.com/nopnop2002/esp-idf-ssd1306.git
+      path: components/ssd1306
+      type: git
+    version: fbf73ef39d37787c9c33564c49d025b7c8c7fc83
 direct_dependencies:
-- joltwallet/littlefs
-manifest_hash: d78db4a00def1588ad4e09cbd83972ee961e917d08055dd8929f9c873c641058
+- nopnop2002/ssd1306
+manifest_hash: 926eaae7695974cd3493143bbc39f92ccc49cc1c430a0e7b7cc8eaa24b6f1ef7
 target: esp32s3
 version: 2.0.0
